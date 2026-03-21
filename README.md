@@ -1,6 +1,7 @@
 # Bureau Exchange
 
 [![CI](https://github.com/FaresMajdoub/currency-bureau/actions/workflows/ci.yml/badge.svg)](https://github.com/FaresMajdoub/currency-bureau/actions/workflows/ci.yml)
+[![CD](https://github.com/FaresMajdoub/currency-bureau/actions/workflows/cd.yml/badge.svg)](https://github.com/FaresMajdoub/currency-bureau/actions/workflows/cd.yml)
 [![Docker](https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white)](docker-compose.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
