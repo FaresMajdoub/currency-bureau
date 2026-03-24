@@ -26,7 +26,7 @@ services:
     ports:
       - "3001:3001"
     environment:
-      DATABASE_URL:     postgresql://bureau_user:bureau_pass@postgres:5432/currency_bureau
+      DATABASE_URL:     postgresql://bureau_user:bureau_pass@postgres:5432/currency_bureau?connection_limit=10&pool_timeout=30
       PORT:             3001
       NODE_ENV:         production
       CORS_ORIGIN:      http://localhost:5173

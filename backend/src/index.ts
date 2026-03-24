@@ -12,6 +12,13 @@ async function main() {
   await prisma.$connect();
   console.log('✅ Database connected');
 
+  // Warm the connection pool — prisma.$connect() validates the schema but
+  // does not always open physical TCP connections eagerly. Running parallel
+  // no-op queries forces the pool to open real connections to PostgreSQL now,
+  // so the first interactive transaction never pays that establishment cost.
+  await Promise.all(Array.from({ length: 5 }, () => prisma.$queryRaw`SELECT 1`));
+  console.log('✅ Connection pool warmed (5 connections)');
+
   // Pre-warm the rate cache so the very first transaction is never slow
   try {
     await refreshRates();

@@ -55,32 +55,25 @@ async function fetchLiveRates(): Promise<Record<string, number>> {
  * Returns an array suitable for the /api/rates response.
  */
 export async function getRates() {
-  const cutoff = new Date(Date.now() - RATE_TTL_MS);
+  // Return the most recent rate per currency directly from DB.
+  // The background interval in index.ts handles keeping them fresh —
+  // this function never blocks on an external API call.
+  const rates = await prisma.$queryRaw<
+    { currency_code: string; buy_rate: number; sell_rate: number; market_rate: number; fetched_at: Date }[]
+  >`
+    SELECT DISTINCT ON ("currencyCode")
+      "currencyCode" AS currency_code,
+      "buyRate"      AS buy_rate,
+      "sellRate"     AS sell_rate,
+      "marketRate"   AS market_rate,
+      "fetchedAt"    AS fetched_at
+    FROM "ExchangeRate"
+    ORDER BY "currencyCode", "fetchedAt" DESC
+  `;
 
-  // Check if we have any fresh rates
-  const fresh = await prisma.exchangeRate.findFirst({
-    where: { fetchedAt: { gte: cutoff } },
-    orderBy: { fetchedAt: 'desc' },
-  });
+  if (rates.length > 0) return enrichWithCurrency(rates);
 
-  if (fresh) {
-    // Cache hit — return all latest rates per currency
-    const rates = await prisma.$queryRaw<
-      { currency_code: string; buy_rate: number; sell_rate: number; market_rate: number; fetched_at: Date }[]
-    >`
-      SELECT DISTINCT ON ("currencyCode")
-        "currencyCode" AS currency_code,
-        "buyRate"      AS buy_rate,
-        "sellRate"     AS sell_rate,
-        "marketRate"   AS market_rate,
-        "fetchedAt"    AS fetched_at
-      FROM "ExchangeRate"
-      ORDER BY "currencyCode", "fetchedAt" DESC
-    `;
-    return enrichWithCurrency(rates);
-  }
-
-  // Cache miss — fetch fresh
+  // Empty DB — only on a truly fresh install with no seed.
   return refreshRates();
 }
 
@@ -148,17 +141,17 @@ export async function refreshRates() {
 }
 
 /**
- * Get the current rate for a specific currency (with cache).
+ * Get the most recent rate for a specific currency from the DB.
+ * Never calls the external API — the background interval in index.ts
+ * keeps rates fresh so transactions are never blocked on a network call.
  */
 export async function getRateForCurrency(code: string): Promise<{
   buyRate: number;
   sellRate: number;
   marketRate: number;
 } | null> {
-  const cutoff = new Date(Date.now() - RATE_TTL_MS);
-
   const rate = await prisma.exchangeRate.findFirst({
-    where: { currencyCode: code, fetchedAt: { gte: cutoff } },
+    where: { currencyCode: code },
     orderBy: { fetchedAt: 'desc' },
   });
 
@@ -166,7 +159,8 @@ export async function getRateForCurrency(code: string): Promise<{
     return { buyRate: rate.buyRate, sellRate: rate.sellRate, marketRate: rate.marketRate };
   }
 
-  // Refresh all rates and return the one we need
+  // Nothing in DB at all — only happens on a truly empty DB (no seed).
+  // Fall back to a one-time fetch so the app stays functional.
   const all = await refreshRates();
   const found = all.find((r) => r.currency_code === code);
   if (!found) return null;
