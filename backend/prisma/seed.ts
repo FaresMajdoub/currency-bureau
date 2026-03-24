@@ -53,6 +53,17 @@ const DENOMINATIONS: Record<string, number[]> = {
   CUP: [1, 3, 5, 10, 20, 50, 100],
 };
 
+// Approximate market rates vs CAD (units of foreign per 1 CAD) — used for seeding only
+const SEED_RATES_VS_CAD: Record<string, number> = {
+  USD: 0.72, EUR: 0.66, GBP: 0.57, CHF: 0.64, JPY: 107.5, CNY: 5.22,
+  MAD: 10.20, SAR: 2.81, AED: 2.74, QAR: 2.73, KWD: 0.228,
+  TRY: 24.5, MXN: 13.8, INR: 60.2, BRL: 3.98, AUD: 1.12,
+  HKD: 5.65, SGD: 0.97, NZD: 1.21, DOP: 59.0, XCD: 2.02, CUP: 33.0,
+};
+
+const BUY_MARGIN  = 0.985;
+const SELL_MARGIN = 1.015;
+
 // Seed quantities — realistic starting stock for a bureau
 function seedQty(denom: number): number {
   if (denom >= 500)  return Math.floor(Math.random() * 20) + 10;
@@ -86,6 +97,19 @@ async function main() {
       });
     }
   }
+
+  console.log('🌱 Seeding exchange rates...');
+  const now = new Date();
+  await prisma.exchangeRate.createMany({
+    data: Object.entries(SEED_RATES_VS_CAD).map(([code, market]) => ({
+      currencyCode: code,
+      marketRate:   market,
+      buyRate:      market * BUY_MARGIN,
+      sellRate:     market * SELL_MARGIN,
+      fetchedAt:    now,
+    })),
+    skipDuplicates: true,
+  });
 
   console.log('✅ Seed complete');
 }
