@@ -86,6 +86,7 @@ export function DashboardPage({ push: pushProp }: DashboardPageProps) {
     txCount: 0,
     cadVolume: 0,
     topCurrency: '—',
+    topCurrencyVolume: 0,
     lowAlerts: 0,
   });
   const [loadingMetrics, setLoadingMetrics] = useState(true);
@@ -125,15 +126,20 @@ export function DashboardPage({ push: pushProp }: DashboardPageProps) {
         setLoadingTx(false);
 
         const cadVol = todayTx.reduce((s, t) => s + (t.amount_cad ?? 0), 0);
-        const currCounts: Record<string, number> = {};
-        todayTx.forEach(t => { currCounts[t.currency_code] = (currCounts[t.currency_code] ?? 0) + 1; });
-        const topCurrency = Object.entries(currCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '—';
+        const currVolumes: Record<string, number> = {};
+        todayTx.forEach(t => {
+          currVolumes[t.currency_code] = (currVolumes[t.currency_code] ?? 0) + (t.amount_cad ?? 0);
+        });
+        const topEntry = Object.entries(currVolumes).sort((a, b) => b[1] - a[1])[0];
+        const topCurrency = topEntry?.[0] ?? '—';
+        const topCurrencyVolume = topEntry?.[1] ?? 0;
 
         setMetrics(prev => ({
           ...prev,
           txCount: todayTx.length,
           cadVolume: cadVol,
           topCurrency,
+          topCurrencyVolume,
         }));
       }
 
@@ -218,6 +224,7 @@ export function DashboardPage({ push: pushProp }: DashboardPageProps) {
         <MetricCard
           title="Most Exchanged"
           value={metrics.topCurrency}
+          subtitle={metrics.topCurrency !== '—' ? `${formatCAD(metrics.topCurrencyVolume)} today` : undefined}
           loading={loadingMetrics}
           color="bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400"
           icon={

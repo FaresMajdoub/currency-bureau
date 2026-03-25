@@ -48,6 +48,18 @@ export async function checkTillSufficiency(
     const denom = parseFloat(denomStr);
     const row = rows[i];
     if (!row) {
+      // Log full till state so this never silently disappears — helps diagnose
+      // whether this is an inventory gap, a seed issue, or a data race.
+      prisma.tillInventory
+        .findMany({ where: { currencyCode } })
+        .then(current => {
+          console.error(
+            `[till] denomination_not_found currency=${currencyCode} denomination=${denom} ` +
+            `requested_qty=${qty} ` +
+            `current_till=${JSON.stringify(current.map(r => ({ d: r.denomination, q: r.quantity })))}`
+          );
+        })
+        .catch(() => {});
       return { ok: false, missing: `Denomination ${denom} not supported for ${currencyCode}` };
     }
     if (row.quantity < qty) {

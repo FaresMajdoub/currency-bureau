@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import prisma from '../db/client';
 import { getRateForCurrency } from '../services/rateService';
 import { checkTillSufficiency, deductFromTill, addToTill, DenominationMap } from '../services/tillService';
@@ -6,6 +7,17 @@ import { emitTransaction, emitTillUpdated } from '../socket';
 import { sendReceiptEmail } from '../services/emailService';
 
 const router = Router();
+
+// Rate-limit only the transaction submission endpoint (POST).
+// GET /api/transaction is used by the admin dashboard and must never be throttled.
+// 100 per 15 min ≈ 6-7/min — comfortable headroom for a real teller.
+const transactionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many transaction attempts, please try again shortly.' },
+});
 
 // In-memory cache for bureau config values that rarely change
 let _cachedMaxAmount: number | null = null;
@@ -68,7 +80,7 @@ interface TransactionBody {
  *       503:
  *         description: Exchange rate unavailable
  */
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', transactionLimiter, async (req: Request, res: Response) => {
   const body = req.body as Partial<TransactionBody>;
 
   // --- Validation ---
