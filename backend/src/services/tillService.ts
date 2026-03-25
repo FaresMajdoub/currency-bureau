@@ -93,13 +93,17 @@ export async function deductFromTill(
 ) {
   for (const [denomStr, qty] of Object.entries(denominations)) {
     const denom = parseFloat(denomStr);
-    // update returns the new record — derive quantityBefore from it (no extra findUnique needed)
-    const updated = await (tx as any).tillInventory.update({
-      where: { currencyCode_denomination: { currencyCode, denomination: denom } },
+    // updateMany uses separate WHERE conditions (not composite key tuple comparison) so
+    // the implicit int4→float8 cast works correctly for DOUBLE PRECISION denomination column.
+    const before = await (tx as any).tillInventory.findFirst({
+      where: { currencyCode, denomination: denom },
+    });
+    const quantityBefore = before?.quantity ?? 0;
+    await (tx as any).tillInventory.updateMany({
+      where: { currencyCode, denomination: denom },
       data: { quantity: { decrement: qty } },
     });
-    const quantityAfter  = updated.quantity;
-    const quantityBefore = quantityAfter + qty;
+    const quantityAfter = quantityBefore - qty;
     await (tx as any).tillHistoryEntry.create({
       data: {
         currency:      currencyCode,
@@ -127,14 +131,23 @@ export async function addToTill(
 ) {
   for (const [denomStr, qty] of Object.entries(denominations)) {
     const denom = parseFloat(denomStr);
-    // upsert returns the new record — derive quantityBefore from it (no extra findUnique needed)
-    const result = await (tx as any).tillInventory.upsert({
-      where: { currencyCode_denomination: { currencyCode, denomination: denom } },
-      update: { quantity: { increment: qty } },
-      create: { currencyCode, denomination: denom, quantity: qty },
+    // Use findFirst + updateMany/create instead of upsert with composite key.
+    // Same reason as checkTillSufficiency: composite key WHERE uses type-strict tuple comparison.
+    const existing = await (tx as any).tillInventory.findFirst({
+      where: { currencyCode, denomination: denom },
     });
-    const quantityAfter  = result.quantity;
-    const quantityBefore = quantityAfter - qty;
+    const quantityBefore = existing?.quantity ?? 0;
+    if (existing) {
+      await (tx as any).tillInventory.updateMany({
+        where: { currencyCode, denomination: denom },
+        data: { quantity: { increment: qty } },
+      });
+    } else {
+      await (tx as any).tillInventory.create({
+        data: { currencyCode, denomination: denom, quantity: qty },
+      });
+    }
+    const quantityAfter = quantityBefore + qty;
     await (tx as any).tillHistoryEntry.create({
       data: {
         currency:      currencyCode,
@@ -160,15 +173,20 @@ export async function restockTill(
 ): Promise<void> {
   for (const [denomStr, qty] of Object.entries(denominations)) {
     const denom = parseFloat(denomStr);
-    const before = await prisma.tillInventory.findUnique({
-      where: { currencyCode_denomination: { currencyCode, denomination: denom } },
+    const before = await prisma.tillInventory.findFirst({
+      where: { currencyCode, denomination: denom },
     });
     const quantityBefore = before?.quantity ?? 0;
-    await prisma.tillInventory.upsert({
-      where: { currencyCode_denomination: { currencyCode, denomination: denom } },
-      update: { quantity: qty },
-      create: { currencyCode, denomination: denom, quantity: qty },
-    });
+    if (before) {
+      await prisma.tillInventory.updateMany({
+        where: { currencyCode, denomination: denom },
+        data: { quantity: qty },
+      });
+    } else {
+      await prisma.tillInventory.create({
+        data: { currencyCode, denomination: denom, quantity: qty },
+      });
+    }
     await prisma.tillHistoryEntry.create({
       data: {
         currency:      currencyCode,
